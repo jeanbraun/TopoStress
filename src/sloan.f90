@@ -1,0 +1,336 @@
+      SUBROUTINE DIAMTR_SLOAN(N,E2,ADJ,XADJ,MASK,LS,XLS,HLEVEL,SNODE,NC)
+      INTEGER I,J,N
+      INTEGER E2,NC
+      INTEGER NODE
+      INTEGER DEPTH,ENODE,HSIZE,ISTOP,ISTRT,JSTOP,JSTRT,SNODE,WIDTH
+      INTEGER DEGREE,EWIDTH,MINDEG,SDEPTH
+      INTEGER LS(N)
+      INTEGER ADJ(E2),XLS(N+1)
+      INTEGER MASK(N),XADJ(N+1)
+      INTEGER HLEVEL(N)
+      MINDEG=N
+      DO 10 I=1,N
+        IF(MASK(I).EQ.0)THEN
+          DEGREE=XADJ(I+1)-XADJ(I)
+          IF(DEGREE.LT.MINDEG)THEN
+            SNODE=I
+            MINDEG=DEGREE
+          END IF
+        END IF
+   10 CONTINUE
+
+      CALL ROOTLS_SLOAN &
+          (N,SNODE,N+1,E2,ADJ,XADJ,MASK,LS,XLS,SDEPTH,WIDTH)
+      NC=XLS(SDEPTH+1)-1
+   15 CONTINUE
+      HSIZE=0
+      ISTRT=XLS(SDEPTH)
+      ISTOP=XLS(SDEPTH+1)-1
+      DO 20 I=ISTRT,ISTOP
+        NODE=LS(I)
+        HSIZE=HSIZE+1
+        HLEVEL(HSIZE)=NODE
+        XLS(NODE)=XADJ(NODE+1)-XADJ(NODE)
+   20 CONTINUE
+      IF(HSIZE.GT.1)CALL ISORTI_SLOAN(HSIZE,HLEVEL,N,XLS)
+      ISTOP=HSIZE
+      HSIZE=1
+      DEGREE=XLS(HLEVEL(1))
+      DO 25 I=2,ISTOP
+        NODE=HLEVEL(I)
+        IF(XLS(NODE).NE.DEGREE)THEN
+          DEGREE=XLS(NODE)
+          HSIZE=HSIZE+1
+          HLEVEL(HSIZE)=NODE
+        ENDIF
+   25 CONTINUE
+      EWIDTH=NC+1
+      DO 30 I=1,HSIZE
+        NODE=HLEVEL(I)
+        CALL ROOTLS_SLOAN &
+          (N,NODE,EWIDTH,E2,ADJ,XADJ,MASK,LS,XLS,DEPTH,WIDTH)
+        IF(WIDTH.LT.EWIDTH)THEN
+          IF(DEPTH.GT.SDEPTH)THEN
+            SNODE=NODE
+            SDEPTH=DEPTH
+            GOTO 15
+          ENDIF
+          ENODE=NODE
+          EWIDTH=WIDTH
+        END IF
+   30 CONTINUE
+      IF(NODE.NE.ENODE)THEN
+        CALL ROOTLS_SLOAN &
+          (N,ENODE,NC+1,E2,ADJ,XADJ,MASK,LS,XLS,DEPTH,WIDTH)
+      ENDIF
+      DO 50 I=1,DEPTH
+        JSTRT=XLS(I)
+        JSTOP=XLS(I+1)-1
+        DO 40 J=JSTRT,JSTOP
+          MASK(LS(J))=I-1
+   40   CONTINUE
+   50 CONTINUE
+      END
+      SUBROUTINE GRAPH_SLOAN(N,NE,INPN,NPN,XNPN,IADJ,ADJ,XADJ)
+      INTEGER I,J,K,L,M,N
+      INTEGER NE
+      INTEGER IADJ,INPN,NEN1
+      INTEGER JSTOP,JSTRT,LSTOP,LSTRT,MSTOP,MSTRT,NODEJ,NODEK
+      INTEGER ADJ(IADJ),NPN(INPN)
+      INTEGER XADJ(N+1),XNPN(NE+1)
+      DO 5 I=1,IADJ
+        ADJ(I)=0
+    5 CONTINUE
+      DO 10 I=1,N
+        XADJ(I)=0
+   10 CONTINUE
+      DO 30 I=1,NE
+        JSTRT=XNPN(I)
+        JSTOP=XNPN(I+1)-1
+        NEN1 =JSTOP-JSTRT
+        DO 20 J=JSTRT,JSTOP
+          NODEJ=NPN(J)
+          XADJ(NODEJ)=XADJ(NODEJ)+NEN1
+   20   CONTINUE
+   30 CONTINUE
+      L=1
+      DO 40 I=1,N
+        L=L+XADJ(I)
+        XADJ(I)=L-XADJ(I)
+   40 CONTINUE
+      XADJ(N+1)=L
+      DO 90 I=1,NE
+        JSTRT=XNPN(I)
+        JSTOP=XNPN(I+1)-1
+        DO 80 J=JSTRT,JSTOP-1
+          NODEJ=NPN(J)
+          LSTRT=XADJ(NODEJ)
+          LSTOP=XADJ(NODEJ+1)-1
+          DO 70 K=J+1,JSTOP
+            NODEK=NPN(K)
+            DO 50 L=LSTRT,LSTOP
+              IF(ADJ(L).EQ.NODEK)GOTO 70
+              IF(ADJ(L).EQ.0)GOTO 55
+   50       CONTINUE
+            WRITE(6,1000)
+            STOP
+   55       CONTINUE
+            ADJ(L)=NODEK
+            MSTRT=XADJ(NODEK)
+            MSTOP=XADJ(NODEK+1)-1
+            DO 60 M=MSTRT,MSTOP
+              IF(ADJ(M).EQ.0)GOTO 65
+   60       CONTINUE
+            WRITE(6,1000)
+            STOP
+   65       CONTINUE
+            ADJ(M)=NODEJ
+   70     CONTINUE
+   80   CONTINUE
+   90 CONTINUE
+      K=0
+      JSTRT=1
+      DO 110 I=1,N
+        JSTOP=XADJ(I+1)-1
+        DO 100 J=JSTRT,JSTOP
+          IF(ADJ(J).EQ.0)GOTO 105
+          K=K+1
+          ADJ(K)=ADJ(J)
+  100   CONTINUE
+  105   CONTINUE
+        XADJ(I+1)=K+1
+        JSTRT=JSTOP+1
+  110 CONTINUE
+ 1000 FORMAT(//,1X,'***ERROR IN GRAPH***', &
+            //,1X,'CANNOT ASSEMBLE NODE ADJACENCY LIST', &
+            //,1X,'CHECK NPN AND XNPN ARRAYS')
+      END
+      SUBROUTINE ISORTI_SLOAN(NL,LIST,NK,KEY)
+      INTEGER I,J,T
+      INTEGER NL,NK
+      INTEGER VALUE
+      INTEGER KEY(NK)
+      INTEGER LIST(NL)
+      DO 20 I=2,NL
+        T=LIST(I)
+        VALUE=KEY(T)
+        DO 10 J=I-1,1,-1
+           IF(VALUE.GE.KEY(LIST(J)))THEN
+             LIST(J+1)=T
+             GOTO 20
+           ENDIF
+           LIST(J+1)=LIST(J)
+   10   CONTINUE
+        LIST(1)=T
+   20 CONTINUE
+      END
+      SUBROUTINE LABEL_SLOAN(N,E2,ADJ,XADJ,NNN,IW,OLDPRO,NEWPRO)
+      INTEGER I,N
+      INTEGER E2,I1,I2,I3,NC
+      INTEGER SNODE
+      INTEGER LSTNUM,NEWPRO,OLDPRO
+      INTEGER IW(3*N+1)
+      INTEGER ADJ(E2),NNN(N)
+      INTEGER XADJ(N+1)
+      DO 10 I=1,N
+        NNN(I)=0
+   10 CONTINUE
+      I1=1
+      I2=I1+N
+      I3=I2+N+1
+      LSTNUM=0
+   20 IF(LSTNUM.LT.N)THEN
+        CALL DIAMTR_SLOAN &
+          (N,E2,ADJ,XADJ,NNN,IW(I1),IW(I2),IW(I3),SNODE,NC)
+        CALL NUMBER_SLOAN &
+          (N,NC,SNODE,LSTNUM,E2,ADJ,XADJ,NNN,IW(I1),IW(I2))
+        GOTO 20
+      END IF
+      CALL PROFIL_SLOAN(N,NNN,E2,ADJ,XADJ,OLDPRO,NEWPRO)
+      IF(OLDPRO.LT.NEWPRO)THEN
+        DO 30 I=1,N
+          NNN(I)=I
+   30   CONTINUE
+        NEWPRO=OLDPRO
+      END IF
+      END     
+      SUBROUTINE NUMBER_SLOAN(N,NC,SNODE,LSTNUM,E2,ADJ,XADJ,S,Q,P)
+
+      INTEGER I,J,N
+      INTEGER E2,NC,NN,W1,W2
+      INTEGER NBR
+      INTEGER NEXT,NODE,PRTY
+      INTEGER JSTOP,JSTRT,ISTOP,ISTRT,NABOR,SNODE
+      INTEGER ADDRES,LSTNUM,MAXPRT
+      INTEGER P(N),Q(NC),S(N)
+      INTEGER ADJ(E2)
+      INTEGER XADJ(N+1)
+      PARAMETER (W1=1, W2=2)
+      DO 10 I=1,NC
+        NODE=Q(I)
+        P(NODE)=W1*S(NODE)-W2*(XADJ(NODE+1)-XADJ(NODE)+1)
+        S(NODE)=-2
+   10 CONTINUE
+      NN=1
+      Q(NN)=SNODE
+      S(SNODE)=-1
+   30 IF(NN.GT.0)THEN
+        ADDRES=1
+        MAXPRT=P(Q(1))
+        DO 35 I=2,NN
+          PRTY=P(Q(I))
+          IF(PRTY.GT.MAXPRT)THEN
+            ADDRES=I
+            MAXPRT=PRTY
+          END IF
+   35   CONTINUE
+        NEXT=Q(ADDRES)
+        Q(ADDRES)=Q(NN)
+        NN=NN-1
+        ISTRT=XADJ(NEXT)
+        ISTOP=XADJ(NEXT+1)-1
+        IF(S(NEXT).EQ.-1)THEN
+          DO 50 I=ISTRT,ISTOP
+            NBR=ADJ(I)
+            P(NBR)=P(NBR)+W2
+            IF(S(NBR).EQ.-2)THEN
+              NN=NN+1
+              Q(NN)=NBR
+              S(NBR)=-1
+            END IF
+   50     CONTINUE
+        END IF
+        LSTNUM=LSTNUM+1
+        S(NEXT)=LSTNUM
+        DO 80 I=ISTRT,ISTOP
+          NBR=ADJ(I)
+          IF(S(NBR).EQ.-1)THEN
+            P(NBR)=P(NBR)+W2
+            S(NBR)=0
+            JSTRT=XADJ(NBR)
+            JSTOP=XADJ(NBR+1)-1
+            DO 60 J=JSTRT,JSTOP
+              NABOR=ADJ(J)
+              P(NABOR)=P(NABOR)+W2
+              IF(S(NABOR).EQ.-2)THEN
+                NN=NN+1
+                Q(NN)=NABOR
+                S(NABOR)=-1
+               END IF
+   60       CONTINUE
+          END IF
+   80   CONTINUE
+        GOTO 30
+      END IF
+      END
+      SUBROUTINE PROFIL_SLOAN(N,NNN,E2,ADJ,XADJ,OLDPRO,NEWPRO)
+      INTEGER I,J,N
+      INTEGER E2
+      INTEGER JSTOP,JSTRT
+      INTEGER NEWMIN,NEWPRO,OLDMIN,OLDPRO
+      INTEGER ADJ(E2),NNN(N)
+      INTEGER XADJ(N+1)
+      OLDPRO=0
+      NEWPRO=0
+      DO 20 I=1,N
+        JSTRT=XADJ(I)
+        JSTOP=XADJ(I+1)-1
+        OLDMIN=I
+        NEWMIN=NNN(I)
+        DO 10 J=JSTRT,JSTOP
+          OLDMIN=MIN(OLDMIN,ADJ(J))
+          NEWMIN=MIN(NEWMIN,NNN(ADJ(J)))
+   10   CONTINUE
+        OLDPRO=OLDPRO+DIM(I,OLDMIN)
+        NEWPRO=NEWPRO+DIM(NNN(I),NEWMIN)
+   20 CONTINUE
+      OLDPRO=OLDPRO+N
+      NEWPRO=NEWPRO+N
+      END
+      SUBROUTINE ROOTLS_SLOAN(N,ROOT,MAXWID,E2,ADJ,XADJ,MASK,LS,XLS, &
+          DEPTH,WIDTH)
+      INTEGER I,J,N
+      INTEGER E2,NC
+      INTEGER NBR
+      INTEGER NODE,ROOT
+      INTEGER DEPTH,JSTOP,JSTRT,LSTOP,LSTRT,LWDTH,WIDTH
+      INTEGER MAXWID
+      INTEGER LS(N)
+      INTEGER ADJ(E2),XLS(N+1)
+      INTEGER MASK(N),XADJ(N+1)
+      MASK(ROOT)=1
+      LS(1)=ROOT
+      NC   =1
+      WIDTH=1
+      DEPTH=0
+      LSTOP=0
+      LWDTH=1
+   10 IF(LWDTH.GT.0)THEN
+        LSTRT=LSTOP+1
+        LSTOP=NC
+        DEPTH=DEPTH+1
+        XLS(DEPTH)=LSTRT
+        DO 30 I=LSTRT,LSTOP
+          NODE=LS(I)
+          JSTRT=XADJ(NODE)
+          JSTOP=XADJ(NODE+1)-1
+          DO 20 J=JSTRT,JSTOP
+            NBR=ADJ(J)
+            IF(MASK(NBR).EQ.0)THEN
+              NC=NC+1
+              LS(NC)=NBR
+              MASK(NBR)=1
+            END IF
+   20     CONTINUE
+   30   CONTINUE
+        LWDTH=NC-LSTOP
+        WIDTH=MAX(LWDTH,WIDTH)
+        IF(WIDTH.GE.MAXWID)GOTO 35
+        GOTO 10
+      END IF
+      XLS(DEPTH+1)=LSTOP+1
+   35 CONTINUE
+      DO 40 I=1,NC
+        MASK(LS(I))=0
+   40 CONTINUE
+      END
